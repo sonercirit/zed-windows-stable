@@ -13,28 +13,28 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Get latest release
       id: get_latest_release
       run: |
         $release = (Invoke-RestMethod -Uri "https://api.github.com/repos/${{ env.ZED_REPO }}/releases/latest")
         $tag = $release.tag_name
-        echo "LATEST_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "LATEST_TAG=$tag" >> $env:GITHUB_ENV
 
     - name: Check if build needed
       id: check_build
       run: |
         $latestBuild = Get-Content -Path .\latest_build.txt -ErrorAction SilentlyContinue
         if ("${{ env.LATEST_TAG }}" -ne "$latestBuild") {
-          echo "BUILD_NEEDED=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "BUILD_NEEDED=true" >> $env:GITHUB_ENV
         } else {
-          echo "BUILD_NEEDED=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "BUILD_NEEDED=false" >> $env:GITHUB_ENV
         }
 
     - name: Checkout Zed
       if: env.BUILD_NEEDED == 'true'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: ${{ env.ZED_REPO }}
         ref: ${{ env.LATEST_TAG }}
@@ -42,11 +42,9 @@ jobs:
 
     - name: Set up Rust
       if: env.BUILD_NEEDED == 'true'
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
-        profile: minimal
-        override: true
+        components: rustfmt, clippy
 
     - name: Build Zed
       if: env.BUILD_NEEDED == 'true'
@@ -57,25 +55,13 @@ jobs:
     - name: Create Release
       if: env.BUILD_NEEDED == 'true'
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: zed-windows-${{ env.LATEST_TAG }}
-        release_name: Zed for Windows ${{ env.LATEST_TAG }}
+        name: Zed for Windows ${{ env.LATEST_TAG }}
         draft: false
         prerelease: false
-
-    - name: Upload Release Asset
-      if: env.BUILD_NEEDED == 'true'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./zed/target/release/zed.exe
-        asset_name: zed-windows.exe
-        asset_content_type: application/octet-stream
+        files: ./zed/target/release/zed.exe
 
     - name: Update latest build
       if: env.BUILD_NEEDED == 'true'
