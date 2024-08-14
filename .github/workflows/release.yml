@@ -1,0 +1,97 @@
+name: Check Zed Releases and Build for Windows
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Runs every 6 hours
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  ZED_REPO: 'zed-industries/zed'
+
+jobs:
+  check-and-build:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Get latest release
+      id: get_latest_release
+      run: |
+        $release = (Invoke-RestMethod -Uri "https://api.github.com/repos/${{ env.ZED_REPO }}/releases/latest")
+        $tag = $release.tag_name
+        echo "LATEST_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Check if build needed
+      id: check_build
+      run: |
+        $latestBuild = Get-Content -Path .\latest_build.txt -ErrorAction SilentlyContinue
+        if ("${{ env.LATEST_TAG }}" -ne "$latestBuild") {
+          echo "BUILD_NEEDED=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+        } else {
+          echo "BUILD_NEEDED=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+        }
+
+    - name: Checkout Zed
+      if: env.BUILD_NEEDED == 'true'
+      uses: actions/checkout@v2
+      with:
+        repository: ${{ env.ZED_REPO }}
+        ref: ${{ env.LATEST_TAG }}
+        path: 'zed'
+
+    - name: Set up Rust
+      if: env.BUILD_NEEDED == 'true'
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Build Zed
+      if: env.BUILD_NEEDED == 'true'
+      run: |
+        cd zed
+        cargo build --release
+
+    - name: Sign executable
+      if: env.BUILD_NEEDED == 'true'
+      uses: microsoft/signtool-code-sign@v1
+      with:
+        certificate: ${{ secrets.WINDOWS_PFX_BASE64 }}
+        cert-password: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        folder: 'zed/target/release'
+        recursive: true
+
+    - name: Create Release
+      if: env.BUILD_NEEDED == 'true'
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: zed-windows-${{ env.LATEST_TAG }}
+        release_name: Zed for Windows ${{ env.LATEST_TAG }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      if: env.BUILD_NEEDED == 'true'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./zed/target/release/zed.exe
+        asset_name: zed-windows.exe
+        asset_content_type: application/octet-stream
+
+    - name: Update latest build
+      if: env.BUILD_NEEDED == 'true'
+      run: |
+        "${{ env.LATEST_TAG }}" | Out-File -FilePath .\latest_build.txt -NoNewline
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add latest_build.txt
+        git commit -m "Update latest build to ${{ env.LATEST_TAG }}"
+        git push
