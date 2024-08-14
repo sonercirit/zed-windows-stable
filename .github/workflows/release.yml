@@ -7,6 +7,10 @@ on:
 
 env:
   ZED_REPO: 'zed-industries/zed'
+  SCCACHE_DIR: C:\sccache
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-C target-cpu=native"
 
 jobs:
   check-and-build:
@@ -46,11 +50,48 @@ jobs:
       with:
         components: rustfmt, clippy
 
+    - name: Install latest sccache
+      if: env.BUILD_NEEDED == 'true'
+      run: |
+        $ProgressPreference = 'SilentlyContinue'
+        $latestRelease = (Invoke-RestMethod -Uri "https://api.github.com/repos/mozilla/sccache/releases/latest").tag_name
+        $latestVersion = $latestRelease -replace 'v',''
+        Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/$latestRelease/sccache-$latestRelease-x86_64-pc-windows-msvc.tar.gz" -OutFile sccache.tar.gz
+        tar xzf sccache.tar.gz
+        Move-Item -Path "sccache-$latestRelease-x86_64-pc-windows-msvc\sccache.exe" -Destination "$env:USERPROFILE\.cargo\bin\sccache.exe"
+        echo "Installed sccache version $latestVersion"
+
+    - name: Setup sccache
+      if: env.BUILD_NEEDED == 'true'
+      run: |
+        echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
+        echo "SCCACHE_DIR=${{ env.SCCACHE_DIR }}" >> $env:GITHUB_ENV
+        echo "SCCACHE_CACHE_SIZE=10G" >> $env:GITHUB_ENV
+
+    - name: Cache sccache
+      if: env.BUILD_NEEDED == 'true'
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-sccache-
+
+    - name: Start sccache server
+      if: env.BUILD_NEEDED == 'true'
+      run: sccache --start-server
+
     - name: Build Zed
       if: env.BUILD_NEEDED == 'true'
       run: |
         cd zed
-        cargo build --release
+        cargo build --release --jobs $(Get-CimInstance -ClassName Win32_ComputerSystem).NumberOfLogicalProcessors
+      env:
+        CARGO_BUILD_JOBS: max
+
+    - name: Stop sccache server
+      if: env.BUILD_NEEDED == 'true'
+      run: sccache --stop-server
 
     - name: Create Release
       if: env.BUILD_NEEDED == 'true'
