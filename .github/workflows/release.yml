@@ -54,15 +54,6 @@ jobs:
         cd zed
         cargo build --release
 
-    - name: Sign executable
-      if: env.BUILD_NEEDED == 'true'
-      uses: microsoft/signtool-code-sign@v1
-      with:
-        certificate: ${{ secrets.WINDOWS_PFX_BASE64 }}
-        cert-password: ${{ secrets.WINDOWS_PFX_PASSWORD }}
-        folder: 'zed/target/release'
-        recursive: true
-
     - name: Create Release
       if: env.BUILD_NEEDED == 'true'
       id: create_release
