@@ -3,7 +3,13 @@ name: Check Zed Releases and Build for Windows
 on:
   schedule:
     - cron: '0 */6 * * *'  # Runs every 6 hours
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if not needed'
+        required: false
+        type: boolean
+        default: false
 
 env:
   ZED_REPO: 'zed-industries/zed'
@@ -24,34 +30,53 @@ jobs:
       run: |
         $release = (Invoke-RestMethod -Uri "https://api.github.com/repos/${{ env.ZED_REPO }}/releases/latest")
         $tag = $release.tag_name
-        echo "LATEST_TAG=$tag" >> $env:GITHUB_ENV
+        echo "LATEST_TAG=$tag" >> $env:GITHUB_OUTPUT
 
     - name: Check if build needed
       id: check_build
       run: |
         $latestBuild = Get-Content -Path .\latest_build.txt -ErrorAction SilentlyContinue
-        if ("${{ env.LATEST_TAG }}" -ne "$latestBuild") {
-          echo "BUILD_NEEDED=true" >> $env:GITHUB_ENV
+        $forceBuild = '${{ github.event.inputs.force_build }}' -eq 'true'
+        if ("${{ steps.get_latest_release.outputs.LATEST_TAG }}" -ne "$latestBuild" -or $forceBuild) {
+          echo "BUILD_NEEDED=true" >> $env:GITHUB_OUTPUT
         } else {
-          echo "BUILD_NEEDED=false" >> $env:GITHUB_ENV
+          echo "BUILD_NEEDED=false" >> $env:GITHUB_OUTPUT
         }
 
+    - name: Set core count
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      run: |
+        $cores = (Get-CimInstance -ClassName Win32_ComputerSystem).NumberOfLogicalProcessors
+        echo "CPU_CORES=$cores" >> $env:GITHUB_ENV
+
     - name: Checkout Zed
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       uses: actions/checkout@v4
       with:
         repository: ${{ env.ZED_REPO }}
-        ref: ${{ env.LATEST_TAG }}
+        ref: ${{ steps.get_latest_release.outputs.LATEST_TAG }}
         path: 'zed'
 
-    - name: Set up Rust
-      if: env.BUILD_NEEDED == 'true'
+    - name: Install Rust
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
 
+    - name: Cache Rust dependencies
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~\.cargo\registry
+          ~\.cargo\git
+          zed\target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
     - name: Install latest sccache
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         $ProgressPreference = 'SilentlyContinue'
         $latestRelease = (Invoke-RestMethod -Uri "https://api.github.com/repos/mozilla/sccache/releases/latest").tag_name
@@ -62,15 +87,15 @@ jobs:
         echo "Installed sccache version $latestVersion"
 
     - name: Setup sccache
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
         echo "SCCACHE_DIR=${{ env.SCCACHE_DIR }}" >> $env:GITHUB_ENV
         echo "SCCACHE_CACHE_SIZE=10G" >> $env:GITHUB_ENV
 
     - name: Cache sccache
-      if: env.BUILD_NEEDED == 'true'
-      uses: actions/cache@v3
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      uses: actions/cache@v4
       with:
         path: ${{ env.SCCACHE_DIR }}
         key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
@@ -78,38 +103,47 @@ jobs:
           ${{ runner.os }}-sccache-
 
     - name: Start sccache server
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: sccache --start-server
 
     - name: Build Zed
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         cd zed
-        cargo build --release --jobs $(Get-CimInstance -ClassName Win32_ComputerSystem).NumberOfLogicalProcessors
+        cargo build --release --jobs $env:CPU_CORES
       env:
-        CARGO_BUILD_JOBS: max
+        CARGO_BUILD_JOBS: ${{ env.CPU_CORES }}
 
     - name: Stop sccache server
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: sccache --stop-server
 
+    - name: Rename and move built executable
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      id: rename_executable
+      run: |
+        $version = "${{ steps.get_latest_release.outputs.LATEST_TAG }}"
+        $newFileName = "zed-windows-$version.exe"
+        Move-Item -Path "./zed/target/release/zed.exe" -Destination "./$newFileName"
+        echo "ARTIFACT_NAME=$newFileName" >> $env:GITHUB_OUTPUT
+
     - name: Create Release
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       id: create_release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: zed-windows-${{ env.LATEST_TAG }}
-        name: Zed for Windows ${{ env.LATEST_TAG }}
+        tag_name: zed-windows-${{ steps.get_latest_release.outputs.LATEST_TAG }}
+        name: Zed for Windows ${{ steps.get_latest_release.outputs.LATEST_TAG }}
         draft: false
         prerelease: false
-        files: ./zed/target/release/zed.exe
+        files: ./${{ steps.rename_executable.outputs.ARTIFACT_NAME }}
 
     - name: Update latest build
-      if: env.BUILD_NEEDED == 'true'
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
-        "${{ env.LATEST_TAG }}" | Out-File -FilePath .\latest_build.txt -NoNewline
+        "${{ steps.get_latest_release.outputs.LATEST_TAG }}" | Out-File -FilePath .\latest_build.txt -NoNewline
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add latest_build.txt
-        git commit -m "Update latest build to ${{ env.LATEST_TAG }}"
+        git commit -m "Update latest build to ${{ steps.get_latest_release.outputs.LATEST_TAG }}"
         git push
