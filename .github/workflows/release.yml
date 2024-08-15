@@ -14,9 +14,12 @@ on:
 env:
   ZED_REPO: 'zed-industries/zed'
   SCCACHE_DIR: C:\sccache
-  CARGO_INCREMENTAL: 0
+  CARGO_INCREMENTAL: 1
   RUST_BACKTRACE: 1
-  RUSTFLAGS: "-C target-cpu=native"
+  RUSTFLAGS: "-C target-cpu=native -C codegen-units=1 -C lto=thin"
+  SCCACHE_CACHE_SIZE: 20G
+  SCCACHE_ERROR_LOG: C:\sccache_error.log
+  SCCACHE_LOG: debug
 
 jobs:
   check-and-build:
@@ -86,12 +89,17 @@ jobs:
         Move-Item -Path "sccache-$latestRelease-x86_64-pc-windows-msvc\sccache.exe" -Destination "$env:USERPROFILE\.cargo\bin\sccache.exe"
         echo "Installed sccache version $latestVersion"
 
+    - name: Check sccache version
+      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      run: sccache --version
+
     - name: Setup sccache
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
         echo "SCCACHE_DIR=${{ env.SCCACHE_DIR }}" >> $env:GITHUB_ENV
-        echo "SCCACHE_CACHE_SIZE=10G" >> $env:GITHUB_ENV
+        echo "SCCACHE_CACHE_SIZE=${{ env.SCCACHE_CACHE_SIZE }}" >> $env:GITHUB_ENV
+        echo "SCCACHE_ERROR_LOG=${{ env.SCCACHE_ERROR_LOG }}" >> $env:GITHUB_ENV
 
     - name: Cache sccache
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
@@ -104,7 +112,9 @@ jobs:
 
     - name: Start sccache server
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
-      run: sccache --start-server
+      run: |
+        sccache --start-server
+        sccache --show-stats
 
     - name: Build Zed
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
@@ -115,8 +125,14 @@ jobs:
         CARGO_BUILD_JOBS: ${{ env.CPU_CORES }}
 
     - name: Stop sccache server
-      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
-      run: sccache --stop-server
+      if: always()
+      run: |
+        sccache --show-stats
+        sccache --stop-server || true
+        if (Test-Path $env:SCCACHE_ERROR_LOG) {
+          Get-Content $env:SCCACHE_ERROR_LOG
+          Remove-Item $env:SCCACHE_ERROR_LOG
+        }
 
     - name: Rename and move built executable
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
