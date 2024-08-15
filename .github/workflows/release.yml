@@ -16,8 +16,8 @@ env:
   SCCACHE_DIR: C:\sccache
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
-  RUSTFLAGS: "-C target-cpu=native -C opt-level=3 -C codegen-units=16 -C lto=thin -C embed-bitcode=yes"
-  CARGO_PROFILE_RELEASE_LTO: "thin"
+  RUSTFLAGS: "-C target-cpu=native -C opt-level=3 -C codegen-units=16"
+  CARGO_PROFILE_RELEASE_LTO: "off"
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
   SCCACHE_CACHE_SIZE: 20G
   SCCACHE_ERROR_LOG: C:\sccache_error.log
@@ -163,6 +163,7 @@ jobs:
         git add latest_build.txt
         $status = git status --porcelain
         if ($status) {
+          git pull
           git commit -m "Update latest build to $latestTag"
           git push
           echo "Changes committed and pushed."
