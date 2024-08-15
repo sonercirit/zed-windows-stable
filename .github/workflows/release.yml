@@ -141,9 +141,16 @@ jobs:
     - name: Update latest build
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
-        "${{ steps.get_latest_release.outputs.LATEST_TAG }}" | Out-File -FilePath .\latest_build.txt -NoNewline
+        $latestTag = "${{ steps.get_latest_release.outputs.LATEST_TAG }}"
+        $latestTag | Out-File -FilePath .\latest_build.txt -NoNewline
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add latest_build.txt
-        git commit -m "Update latest build to ${{ steps.get_latest_release.outputs.LATEST_TAG }}"
-        git push
+        $status = git status --porcelain
+        if ($status) {
+          git commit -m "Update latest build to $latestTag"
+          git push
+          echo "Changes committed and pushed."
+        } else {
+          echo "No changes to commit. latest_build.txt is already up to date."
+        }
