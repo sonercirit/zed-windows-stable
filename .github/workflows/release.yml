@@ -14,9 +14,9 @@ on:
 env:
   ZED_REPO: 'zed-industries/zed'
   SCCACHE_DIR: C:\sccache
-  CARGO_INCREMENTAL: 1
+  CARGO_INCREMENTAL: 0  # Changed to 0 to avoid conflicts with sccache
   RUST_BACKTRACE: 1
-  RUSTFLAGS: "-C target-cpu=native -C codegen-units=1 -C lto=thin"
+  RUSTFLAGS: "-C target-cpu=native -C lto=thin"  # Removed codegen-units=1 for faster builds
   SCCACHE_CACHE_SIZE: 20G
   SCCACHE_ERROR_LOG: C:\sccache_error.log
   SCCACHE_LOG: debug
