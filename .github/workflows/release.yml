@@ -164,6 +164,7 @@ jobs:
         git add latest_build.txt
         $status = git status --porcelain
         if ($status) {
+          git pull
           git commit -m "Update latest build to $latestTag"
           git push
           echo "Changes committed and pushed."
