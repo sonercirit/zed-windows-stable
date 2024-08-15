@@ -116,20 +116,11 @@ jobs:
         sccache --start-server
         sccache --show-stats
 
-    - name: Build Zed Dependencies
-      if: steps.check_build.outputs.BUILD_NEEDED == 'true'
-      run: |
-        cd zed
-        cargo fetch
-        cargo build --release --jobs $env:CPU_CORES --all-targets
-      env:
-        CARGO_BUILD_JOBS: ${{ env.CPU_CORES }}
-
     - name: Build Zed
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         cd zed
-        cargo build --release --jobs $env:CPU_CORES --bin zed
+        cargo build --release --jobs $env:CPU_CORES
       env:
         CARGO_BUILD_JOBS: ${{ env.CPU_CORES }}
 
