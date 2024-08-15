@@ -21,7 +21,6 @@ env:
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
   SCCACHE_CACHE_SIZE: 20G
   SCCACHE_ERROR_LOG: C:\sccache_error.log
-  SCCACHE_LOG: debug
 
 jobs:
   check-and-build:
@@ -120,13 +119,14 @@ jobs:
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
         cd zed
-        cargo build --release --jobs $env:CPU_CORES
+        cargo build --release --jobs $env:CPU_CORES --verbose
       env:
         CARGO_BUILD_JOBS: ${{ env.CPU_CORES }}
 
     - name: Rename and move built executable
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       id: rename_executable
+      continue-on-error: true
       run: |
         $version = "${{ steps.get_latest_release.outputs.LATEST_TAG }}"
         $newFileName = "zed-windows-$version.exe"
@@ -136,6 +136,7 @@ jobs:
     - name: Create Release
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       id: create_release
+      continue-on-error: true
       uses: softprops/action-gh-release@v2
       with:
         tag_name: zed-windows-${{ steps.get_latest_release.outputs.LATEST_TAG }}
@@ -146,6 +147,7 @@ jobs:
 
     - name: Update latest build
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
+      continue-on-error: true
       run: |
         $latestTag = "${{ steps.get_latest_release.outputs.LATEST_TAG }}"
         $latestTag | Out-File -FilePath .\latest_build.txt -NoNewline
