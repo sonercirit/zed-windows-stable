@@ -5,18 +5,18 @@ This repository provides stable, automated Windows builds for the [Zed code edit
 ## Features
 
 - Automated updates for stable builds
-- Windows-compatible executables for easy installation
+- Portable Windows executable for easy use without installation
 - Reliable and sourced from the stable channel of Zed
 
 ## Releases
 
-You can download the latest Windows installer from the [Releases page](https://github.com/sonercirit/zed-windows-stable/releases).
+You can download the latest Windows portable executable from the [Releases page](https://github.com/sonercirit/zed-windows-stable/releases).
 
-## Installation
+## Usage
 
 1. Go to the [Releases page](https://github.com/sonercirit/zed-windows-stable/releases).
 2. Download the latest `.exe` file.
-3. Run the installer and follow the instructions to set up Zed.
+3. Run the executable directly—no installation required.
 
 ## Contributing
 
