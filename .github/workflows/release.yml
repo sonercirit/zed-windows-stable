@@ -16,7 +16,7 @@ env:
   SCCACHE_DIR: C:\sccache
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
-  RUSTFLAGS: "-C opt-level=3 -C codegen-units=16"
+  RUSTFLAGS: "-C opt-level=3 -C codegen-units=16 -C target-feature=+crt-static"
   CARGO_PROFILE_RELEASE_LTO: "off"
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
   SCCACHE_CACHE_SIZE: 20G
