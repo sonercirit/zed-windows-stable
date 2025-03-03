@@ -121,10 +121,6 @@ jobs:
         sccache --start-server
         sccache --show-stats
 
-    - name: Setup rustflags
-      shell: pwsh
-      run: ./.cargo/Parse-Rustflags.ps1 ${{ env.RUSTFLAGS }}
-
     - name: Build Zed
       if: steps.check_build.outputs.BUILD_NEEDED == 'true'
       run: |
